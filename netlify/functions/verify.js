@@ -14,14 +14,21 @@ const razorpay = new Razorpay({
 });
 
 exports.handler = async (event) => {
+  // ✅ Strong CORS Headers for Firebase + Netlify connection
   const headers = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS'
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Max-Age': '86400'
   };
 
+  // ✅ Handle Browser Preflight (OPTIONS) Request FIRST
   if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 200, headers, body: '' };
+    return { 
+      statusCode: 200, 
+      headers, 
+      body: '' 
+    };
   }
 
   if (event.httpMethod !== 'POST') {
@@ -52,7 +59,8 @@ exports.handler = async (event) => {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid plan key' }) };
     }
 
-    if (payment.amount !== plan.price) {
+    // ✅ UPGRADE LOGIC: Allow full price OR any valid upgrade difference (minimum ₹100 = 10000 paise)
+    if (payment.amount > plan.price || payment.amount < 10000) {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Amount mismatch! Fraud detected.' }) };
     }
 
