@@ -55,30 +55,36 @@ exports.handler = async (event) => {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Payment not captured' }) };
     }
 
-    // ✅ FIX: Convert planKey to lowercase to handle any mismatch
     const normalizedKey = planKey ? planKey.toLowerCase().trim() : '';
-    
-    const planConfig = {
-       starter:  { price: 34900, days: 30 },
-       advanced: { price: 49900, days: 30 },
-       ultimate: { price: 69900, days: 30 }
-    };
 
-    const plan = planConfig[normalizedKey];
-    if (!plan) {
-      return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid plan key: ' + normalizedKey }) };
+    // ✅ DYNAMIC CHECK: Fetch plan from Firestore Database instead of hardcoding
+    const planDoc = await db.collection('plans').doc(normalizedKey).get();
+    
+    if (!planDoc.exists) {
+      return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid plan key: ' + normalizedKey + '. Plan not found in database.' }) };
     }
 
-    if (payment.amount > plan.price || payment.amount < 10000) {
+    const planData = planDoc.data();
+    
+    // Ensure plan is active
+    if (!planData.active) {
+      return { statusCode: 400, headers, body: JSON.stringify({ error: 'Plan is currently inactive.' }) };
+    }
+
+    // Get price in paise from database (priceNum is in rupees, e.g., 499)
+    const planPriceInPaise = planData.priceNum * 100;
+
+    // Check amount (Allow full price OR upgrade difference)
+    if (payment.amount > planPriceInPaise || payment.amount < 10000) {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Amount mismatch! Fraud detected.' }) };
     }
 
     const expiresAt = admin.firestore.Timestamp.fromDate(
-      new Date(Date.now() + plan.days * 24 * 60 * 60 * 1000)
+      new Date(Date.now() + planData.durationDays * 24 * 60 * 60 * 1000)
     );
 
     await db.collection('users').doc(uid).update({
-      plan: normalizedKey, // Save the corrected lowercase key
+      plan: normalizedKey,
       planExpiresAt: expiresAt,
       subscription_status: 'active',
       updated_at: admin.firestore.FieldValue.serverTimestamp()
