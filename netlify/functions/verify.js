@@ -1,7 +1,6 @@
 const Razorpay = require('razorpay');
 const admin = require('firebase-admin');
 
-// ✅ FIX: Parse Firebase Service Account and fix newlines in Private Key
 if (!admin.apps.length) {
   var serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
   if (serviceAccount.private_key) {
@@ -19,7 +18,6 @@ const razorpay = new Razorpay({
 });
 
 exports.handler = async (event) => {
-  // ✅ Strong CORS Headers for Firebase + Netlify connection
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
@@ -27,13 +25,8 @@ exports.handler = async (event) => {
     'Access-Control-Max-Age': '86400'
   };
 
-  // ✅ Handle Browser Preflight (OPTIONS) Request FIRST
   if (event.httpMethod === 'OPTIONS') {
-    return { 
-      statusCode: 200, 
-      headers, 
-      body: '' 
-    };
+    return { statusCode: 200, headers, body: '' };
   }
 
   if (event.httpMethod !== 'POST') {
@@ -49,7 +42,6 @@ exports.handler = async (event) => {
 
     var payment = await razorpay.payments.fetch(paymentId);
 
-    // ✅ FIX: If payment is authorized (common in test mode), capture it first
     if (payment.status === 'authorized') {
       try {
         payment = await razorpay.payments.capture(paymentId, payment.amount);
@@ -63,18 +55,20 @@ exports.handler = async (event) => {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Payment not captured' }) };
     }
 
+    // ✅ FIX: Convert planKey to lowercase to handle any mismatch
+    const normalizedKey = planKey ? planKey.toLowerCase().trim() : '';
+    
     const planConfig = {
        starter:  { price: 34900, days: 30 },
        advanced: { price: 49900, days: 30 },
        ultimate: { price: 69900, days: 30 }
     };
 
-    const plan = planConfig[planKey];
+    const plan = planConfig[normalizedKey];
     if (!plan) {
-      return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid plan key' }) };
+      return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid plan key: ' + normalizedKey }) };
     }
 
-    // ✅ UPGRADE LOGIC: Allow full price OR any valid upgrade difference (minimum ₹100 = 10000 paise)
     if (payment.amount > plan.price || payment.amount < 10000) {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Amount mismatch! Fraud detected.' }) };
     }
@@ -84,7 +78,7 @@ exports.handler = async (event) => {
     );
 
     await db.collection('users').doc(uid).update({
-      plan: planKey,
+      plan: normalizedKey, // Save the corrected lowercase key
       planExpiresAt: expiresAt,
       subscription_status: 'active',
       updated_at: admin.firestore.FieldValue.serverTimestamp()
@@ -92,7 +86,7 @@ exports.handler = async (event) => {
 
     await db.collection('payments').add({
       user_id: uid,
-      plan_key: planKey,
+      plan_key: normalizedKey,
       amount: payment.amount / 100,
       razorpay_payment_id: paymentId,
       status: 'verified',
