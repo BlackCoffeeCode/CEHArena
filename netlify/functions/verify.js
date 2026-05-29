@@ -1,9 +1,14 @@
 const Razorpay = require('razorpay');
 const admin = require('firebase-admin');
 
+// ✅ FIX: Parse Firebase Service Account and fix newlines in Private Key
 if (!admin.apps.length) {
+  var serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  if (serviceAccount.private_key) {
+    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+  }
   admin.initializeApp({
-    credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT))
+    credential: admin.credential.cert(serviceAccount)
   });
 }
 const db = admin.firestore();
