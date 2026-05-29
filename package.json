@@ -1,0 +1,16 @@
+{
+  "name": "ceh-arena-nodejs",
+  "version": "1.0.0",
+  "description": "🛡️ **India's #1 CEH v13 Mock Exam Platform** - Converted from PHP to Node.js + Firebase",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
