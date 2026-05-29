@@ -47,7 +47,17 @@ exports.handler = async (event) => {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing required fields' }) };
     }
 
-    const payment = await razorpay.payments.fetch(paymentId);
+    var payment = await razorpay.payments.fetch(paymentId);
+
+    // ✅ FIX: If payment is authorized (common in test mode), capture it first
+    if (payment.status === 'authorized') {
+      try {
+        payment = await razorpay.payments.capture(paymentId, payment.amount);
+      } catch (captureErr) {
+        console.error('Capture Error:', captureErr);
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'Failed to capture payment' }) };
+      }
+    }
 
     if (payment.status !== 'captured') {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Payment not captured' }) };
