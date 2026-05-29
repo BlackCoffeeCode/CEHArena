@@ -1,9 +1,11 @@
 const admin = require("firebase-admin");
 
-// Initialize Firebase Admin SDK using FIREBASE_SERVICE_ACCOUNT JSON
 if (!admin.apps.length) {
   try {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    var serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
+    }
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
       databaseURL: "https://ceharena-b7c23-default-rtdb.firebaseio.com"
@@ -64,15 +66,39 @@ exports.handler = async (event) => {
 
     const uid = authData.localId;
 
-    // Step 2: Check Email Verification
-    if (!authData.emailVerified) {
+    // Step 2: Check Email Verification using Admin SDK (FRESH data, no cache!)
+    // REST API caches emailVerified=false even after user verifies. Admin SDK always returns latest.
+    let isEmailVerified = authData.emailVerified; // default from REST
+    try {
+      const userRecord = await admin.auth().getUser(uid);
+      isEmailVerified = userRecord.emailVerified;
+      console.log("Admin SDK emailVerified:", isEmailVerified, "| REST emailVerified:", authData.emailVerified);
+    } catch (adminErr) {
+      console.warn("Admin getUser failed, using REST value:", adminErr.message);
+    }
+
+    if (!isEmailVerified) {
+      // Send verification email from server
+      try {
+        await fetch(
+          `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_API_KEY}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ requestType: "VERIFY_EMAIL", idToken: authData.idToken }),
+          }
+        );
+        console.log("Verification email sent to:", email);
+      } catch (emailErr) {
+        console.warn("Verification email failed:", emailErr.message);
+      }
+
       return {
         statusCode: 403,
         headers,
         body: JSON.stringify({
           error: "EMAIL_NOT_VERIFIED",
-          idToken: authData.idToken,
-          message: "Email not verified."
+          message: "Email not verified. A verification link has been sent to " + email + ". Please check inbox and spam folder."
         }),
       };
     }
