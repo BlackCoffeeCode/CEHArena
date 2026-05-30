@@ -1,14 +1,17 @@
 const crypto = require('crypto');
 const admin = require('firebase-admin');
 
-// ⚠️ Netlify Environment Variable से Razorpay Secret लो
-const RZP_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "YOUR_RAZORPAY_SECRET_HERE";
+// ⚠️ NO FALLBACK - Key will ONLY come from Netlify Environment Variables
+const RZP_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
 
-// Initialize Firebase Admin (only once)
+if (!RZP_KEY_SECRET) {
+  console.error("ERROR: Razorpay Secret Key is missing in Netlify Environment Variables!");
+}
+
+// Initialize Firebase Admin
 if (!admin.apps.length) {
   admin.initializeApp({
-    credential: admin.credential.applicationDefault(), // Netlify automatically handles this if linked
-    // projectId: "ceharena-b7c23" // Uncomment if applicationDefault fails
+    credential: admin.credential.applicationDefault(),
   });
 }
 const db = admin.firestore();
@@ -22,7 +25,6 @@ const headers = {
 };
 
 exports.handler = async (event) => {
-  // 1. Handle Preflight CORS request
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers, body: '' };
   }
@@ -47,7 +49,7 @@ exports.handler = async (event) => {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing required fields' }) };
     }
 
-    // 2. Verify Razorpay Signature (Security Check)
+    // 2. Verify Razorpay Signature
     const body = orderId + "|" + paymentId;
     const expectedSignature = crypto
       .createHmac("sha256", RZP_KEY_SECRET)
@@ -62,7 +64,7 @@ exports.handler = async (event) => {
       };
     }
 
-    // 3. Signature is valid, save user data to Firestore
+    // 3. Save user data to Firestore
     const planDoc = await db.collection('plans').doc(planKey).get();
     const planData = planDoc.exists ? planDoc.data() : {};
     
@@ -82,7 +84,7 @@ exports.handler = async (event) => {
       startDate: admin.firestore.FieldValue.serverTimestamp(),
       expiryDate: admin.firestore.Timestamp.fromDate(expiryDate),
       createdAt: admin.firestore.FieldValue.serverTimestamp()
-    }, { merge: true }); // merge: true prevents overwriting if doc partially exists
+    }, { merge: true });
 
     return {
       statusCode: 200,
