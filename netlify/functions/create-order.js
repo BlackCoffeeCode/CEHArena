@@ -1,11 +1,11 @@
 const fetch = require('node-fetch');
 
-// ⚠️ NO FALLBACK - Keys will ONLY come from Netlify Environment Variables
-const RZP_KEY_ID = process.env.RAZORPAY_KEY_ID;
-const RZP_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
+// ✅ FIX: Netlify के Environment Variables के नाम से बिल्कुल मिलाओ (Lowercase)
+const RZP_KEY_ID = process.env.rzp_key_id;
+const RZP_KEY_SECRET = process.env.rzp_key_secret;
 
 if (!RZP_KEY_ID || !RZP_KEY_SECRET) {
-  console.error("ERROR: Razorpay keys are missing in Netlify Environment Variables!");
+  console.error("ERROR: Razorpay keys missing in Netlify Environment Variables!");
 }
 
 // Common CORS headers
