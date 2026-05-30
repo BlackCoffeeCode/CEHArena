@@ -1,10 +1,10 @@
 const crypto = require('crypto');
 const admin = require('firebase-admin');
 
-// ✅ FIX: Netlify के Environment Variables के नाम से बिल्कुल मिलाओ (Lowercase)
-const RZP_KEY_SECRET = process.env.rzp_key_secret;
+// ⚠️ HARDCODED FOR TESTING ONLY - DO NOT USE IN PRODUCTION!
+const RZP_KEY_SECRET = "YOUT_RAZORPAY_TEST_SECRET_KEY_HERE"; // <-- यहाँ भी वही Razorpay Test Secret Key Paste करो
 
-// ✅ FIX: Firebase Service Account Variable Name
+// Initialize Firebase Admin (ये Netlify Env Variable से रहने दो, इसे Hardcode मत करना)
 if (!admin.apps.length) {
   try {
     const serviceAccount = JSON.parse(process.env.firebase_service_account);
@@ -12,10 +12,9 @@ if (!admin.apps.length) {
       credential: admin.credential.cert(serviceAccount)
     });
   } catch (e) {
-    console.error("Firebase Admin Initialization Error:", e.message);
+    console.error("Firebase Admin Init Error:", e.message);
   }
 }
-
 const db = admin.firestore();
 
 // Common CORS headers
