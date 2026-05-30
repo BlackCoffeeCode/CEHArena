@@ -1,19 +1,21 @@
 const crypto = require('crypto');
 const admin = require('firebase-admin');
 
-// ⚠️ NO FALLBACK - Key will ONLY come from Netlify Environment Variables
-const RZP_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
+// ✅ FIX: Netlify के Environment Variables के नाम से बिल्कुल मिलाओ (Lowercase)
+const RZP_KEY_SECRET = process.env.rzp_key_secret;
 
-if (!RZP_KEY_SECRET) {
-  console.error("ERROR: Razorpay Secret Key is missing in Netlify Environment Variables!");
-}
-
-// Initialize Firebase Admin
+// ✅ FIX: Firebase Service Account Variable Name
 if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
-  });
+  try {
+    const serviceAccount = JSON.parse(process.env.firebase_service_account);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+  } catch (e) {
+    console.error("Firebase Admin Initialization Error:", e.message);
+  }
 }
+
 const db = admin.firestore();
 
 // Common CORS headers
