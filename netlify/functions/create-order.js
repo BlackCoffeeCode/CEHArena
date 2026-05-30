@@ -1,8 +1,12 @@
 const fetch = require('node-fetch');
 
-// ⚠️ HARDCODED FOR TESTING ONLY - DO NOT USE IN PRODUCTION!
-const RZP_KEY_ID = "rzp_test_SLTYGofYzuB9SQ"; // आपकी Test Key ID
-const RZP_KEY_SECRET = "YOUT_RAZORPAY_TEST_SECRET_KEY_HERE"; // <-- यहाँ अपनी Razorpay Test Secret Key Paste करो
+// ✅ Netlify Environment Variables (Uppercase - exactly as in your Netlify Dashboard)
+const RZP_KEY_ID = process.env.RZP_KEY_ID;
+const RZP_KEY_SECRET = process.env.RZP_KEY_SECRET;
+
+if (!RZP_KEY_ID || !RZP_KEY_SECRET) {
+  console.error("ERROR: Razorpay keys are missing in Netlify Environment Variables!");
+}
 
 // Common CORS headers
 const headers = {
