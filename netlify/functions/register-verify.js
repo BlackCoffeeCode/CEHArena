@@ -1,13 +1,13 @@
 const crypto = require('crypto');
 const admin = require('firebase-admin');
 
-// ⚠️ HARDCODED FOR TESTING ONLY - DO NOT USE IN PRODUCTION!
-const RZP_KEY_SECRET = "YOUT_RAZORPAY_TEST_SECRET_KEY_HERE"; // <-- यहाँ भी वही Razorpay Test Secret Key Paste करो
+// ✅ Netlify Environment Variables (Uppercase)
+const RZP_KEY_SECRET = process.env.RZP_KEY_SECRET;
 
-// Initialize Firebase Admin (ये Netlify Env Variable से रहने दो, इसे Hardcode मत करना)
+// Initialize Firebase Admin
 if (!admin.apps.length) {
   try {
-    const serviceAccount = JSON.parse(process.env.firebase_service_account);
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount)
     });
