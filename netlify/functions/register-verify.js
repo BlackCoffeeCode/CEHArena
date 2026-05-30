@@ -1,30 +1,28 @@
-const Razorpay = require('razorpay');
+const crypto = require('crypto');
 const admin = require('firebase-admin');
 
+// ⚠️ Netlify Environment Variable से Razorpay Secret लो
+const RZP_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "YOUR_RAZORPAY_SECRET_HERE";
+
+// Initialize Firebase Admin (only once)
 if (!admin.apps.length) {
-  var serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-  if (serviceAccount.private_key) {
-    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
-  }
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
+    credential: admin.credential.applicationDefault(), // Netlify automatically handles this if linked
+    // projectId: "ceharena-b7c23" // Uncomment if applicationDefault fails
   });
 }
 const db = admin.firestore();
 
-const razorpay = new Razorpay({
-  key_id: process.env.RZP_KEY_ID,
-  key_secret: process.env.RZP_KEY_SECRET
-});
+// Common CORS headers
+const headers = {
+  'Access-Control-Allow-Origin': 'https://ceharena-b7c23.web.app',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Content-Type': 'application/json'
+};
 
 exports.handler = async (event) => {
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Max-Age': '86400'
-  };
-
+  // 1. Handle Preflight CORS request
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers, body: '' };
   }
@@ -34,94 +32,62 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { paymentId, planKey, uid, userName, userEmail, userPhone } = JSON.parse(event.body);
+    const { 
+      paymentId, 
+      orderId, 
+      razorpaySignature, 
+      planKey, 
+      uid, 
+      userName, 
+      userEmail, 
+      userPhone 
+    } = JSON.parse(event.body);
 
-    if (!paymentId || !planKey || !uid) {
+    if (!paymentId || !orderId || !razorpaySignature || !uid || !planKey) {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing required fields' }) };
     }
 
-    // Step 1: Fetch & Capture Payment
-    var payment = await razorpay.payments.fetch(paymentId);
+    // 2. Verify Razorpay Signature (Security Check)
+    const body = orderId + "|" + paymentId;
+    const expectedSignature = crypto
+      .createHmac("sha256", RZP_KEY_SECRET)
+      .update(body.toString())
+      .digest("hex");
 
-    if (payment.status === 'authorized') {
-      try {
-        payment = await razorpay.payments.capture(paymentId, payment.amount);
-      } catch (captureErr) {
-        console.error('Capture Error:', captureErr);
-        return { statusCode: 400, headers, body: JSON.stringify({ error: 'Failed to capture payment' }) };
-      }
+    if (expectedSignature !== razorpaySignature) {
+      return { 
+        statusCode: 400, 
+        headers, 
+        body: JSON.stringify({ error: 'Payment verification failed. Signature mismatch.' }) 
+      };
     }
 
-    if (payment.status !== 'captured') {
-      return { statusCode: 400, headers, body: JSON.stringify({ error: 'Payment not captured. Status: ' + payment.status }) };
-    }
+    // 3. Signature is valid, save user data to Firestore
+    const planDoc = await db.collection('plans').doc(planKey).get();
+    const planData = planDoc.exists ? planDoc.data() : {};
+    
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + (planData.durationDays || 30));
 
-    // Step 2: Verify Plan from Firestore
-    const normalizedKey = planKey ? planKey.toLowerCase().trim() : '';
-    const planDoc = await db.collection('plans').doc(normalizedKey).get();
-
-    if (!planDoc.exists) {
-      return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid plan: ' + normalizedKey }) };
-    }
-
-    const planData = planDoc.data();
-
-    if (!planData.active) {
-      return { statusCode: 400, headers, body: JSON.stringify({ error: 'Plan is inactive.' }) };
-    }
-
-    // Step 3: Amount check (fraud detection)
-    const planPriceInPaise = planData.priceNum * 100;
-    if (payment.amount > planPriceInPaise || payment.amount < 10000) {
-      return { statusCode: 400, headers, body: JSON.stringify({ error: 'Amount mismatch! Fraud detected.' }) };
-    }
-
-    const expiresAt = admin.firestore.Timestamp.fromDate(
-      new Date(Date.now() + planData.durationDays * 24 * 60 * 60 * 1000)
-    );
-
-    // Step 4: Create/Update user in Firestore
-    // set() with merge:true — works for BOTH new users AND existing users
     await db.collection('users').doc(uid).set({
-      name: userName || 'User',
-      email: userEmail || '',
-      phone: userPhone || payment.contact || '',
-      plan: normalizedKey,
-      planExpiresAt: expiresAt,
-      subscription_status: 'active',
-      features: planData.features || [],
-      role: 'student',
-      isActive: true,
-      email_verified: false,
-      exams_taken: 0,
-      total_score: 0,
-      created_at: admin.firestore.FieldValue.serverTimestamp(),
-      updated_at: admin.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
-
-    // Step 5: Save payment record
-    await db.collection('payments').add({
-      user_id: uid,
-      user_name: userName || '',
-      user_email: userEmail || '',
-      plan_key: normalizedKey,
-      plan_name: planData.name || normalizedKey,
-      amount: payment.amount / 100,
-      currency: payment.currency || 'INR',
-      razorpay_payment_id: paymentId,
-      razorpay_order_id: payment.order_id || '',
-      method: payment.method || 'online',
-      status: 'verified',
-      source: 'registration',
-      created_at: admin.firestore.FieldValue.serverTimestamp()
-    });
-
-    console.log('✅ Account activated:', userEmail, '| Plan:', normalizedKey);
+      name: userName,
+      email: userEmail,
+      phone: userPhone,
+      plan: planKey,
+      planName: planData.name || 'Unknown Plan',
+      paymentId: paymentId,
+      orderId: orderId,
+      amount: planData.priceNum || 0,
+      status: 'active',
+      startDate: admin.firestore.FieldValue.serverTimestamp(),
+      expiryDate: admin.firestore.Timestamp.fromDate(expiryDate),
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true }); // merge: true prevents overwriting if doc partially exists
 
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({ success: true, message: 'Plan activated successfully!' })
+      body: JSON.stringify({ success: true, message: 'Account activated successfully!' })
     };
 
   } catch (error) {
@@ -129,7 +95,7 @@ exports.handler = async (event) => {
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ success: false, error: error.message })
+      body: JSON.stringify({ error: error.message || 'Internal Server Error' })
     };
   }
 };
