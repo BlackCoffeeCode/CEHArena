@@ -1,8 +1,8 @@
 const fetch = require('node-fetch');
 
-// Netlify Environment Variables
-const RZP_KEY_ID = process.env.rzp_key_id;
-const RZP_KEY_SECRET = process.env.rzp_key_secret;
+// ⚠️ HARDCODED FOR TESTING ONLY - DO NOT USE IN PRODUCTION!
+const RZP_KEY_ID = "rzp_test_SLTYGofYzuB9SQ"; // आपकी Test Key ID
+const RZP_KEY_SECRET = "YOUT_RAZORPAY_TEST_SECRET_KEY_HERE"; // <-- यहाँ अपनी Razorpay Test Secret Key Paste करो
 
 // Common CORS headers
 const headers = {
@@ -22,17 +22,7 @@ exports.handler = async (event) => {
     return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method Not Allowed' }) };
   }
 
-  // 2. Check if keys exist
-  if (!RZP_KEY_ID || !RZP_KEY_SECRET) {
-    console.error("ERROR: Razorpay keys are missing in Netlify Environment Variables!");
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: 'Server configuration error: Missing Razorpay keys.' })
-    };
-  }
-
-  // 3. Timeout Protection
+  // 2. Timeout Protection
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
 
@@ -46,7 +36,7 @@ exports.handler = async (event) => {
     // Razorpay API Authentication
     const auth = Buffer.from(`${RZP_KEY_ID}:${RZP_KEY_SECRET}`).toString('base64');
 
-    // 4. Create Order on Razorpay
+    // 3. Create Order on Razorpay
     const response = await fetch('https://api.razorpay.com/v1/orders', {
       method: 'POST',
       signal: controller.signal,
